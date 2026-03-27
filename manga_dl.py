@@ -12,11 +12,14 @@ Usage:
     python manga_dl.py download --arc egghead
     python manga_dl.py download --arc elbaf
 
+    # Download colored version (chapters 1-1065)
+    python manga_dl.py download --arc marineford --colored
+    python manga_dl.py download 1 100 --colored
+
     # Download by chapter range
-    python manga_dl.py download 1058 1125 --output "OnePiece_Egghead"
+    python manga_dl.py download 1058 1125 -o "OnePiece_Egghead"
 
     # List chapters
-    python manga_dl.py list 1058 1125
     python manga_dl.py list --arc wano
 """
 
@@ -32,10 +35,23 @@ from pathlib import Path
 from PIL import Image
 
 ARCS_FILE = Path(__file__).parent / "arcs.json"
-BASE_URL = "https://tcbonepiecechapters.com"
+
+# Sources
+SOURCES = {
+    "bw": {
+        "name": "TCB Scans (B&W)",
+        "base_url": "https://tcbonepiecechapters.com",
+        "max_chapter": None,  # ongoing
+    },
+    "colored": {
+        "name": "Digital Colored Comics",
+        "base_url": "https://ww12.readonepiece.com",
+        "max_chapter": 1065,
+    },
+}
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    "Referer": f"{BASE_URL}/",
 }
 
 
@@ -59,28 +75,33 @@ def resolve_arc(name):
     sys.exit(1)
 
 
-def fetch(url):
+def fetch(url, referer=None):
     """Fetch a URL and return the response body as string."""
-    req = urllib.request.Request(url, headers=HEADERS)
+    headers = dict(HEADERS)
+    if referer:
+        headers["Referer"] = referer
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read().decode()
 
 
-def fetch_bytes(url):
+def fetch_bytes(url, referer=None):
     """Fetch a URL and return raw bytes."""
-    req = urllib.request.Request(url, headers=HEADERS)
+    headers = dict(HEADERS)
+    if referer:
+        headers["Referer"] = referer
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read()
 
 
-def list_chapters(start=0, end=9999):
-    """Scrape the manga index page for chapter links."""
-    html = fetch(f"{BASE_URL}/mangas/5/one-piece")
+# --- TCB Scans (B&W) ---
 
-    # Structure: <a href="/chapters/ID/one-piece-chapter-NUM" ...>
-    #              <div>One Piece Chapter NUM</div>
-    #              <div>Title</div>
-    #            </a>
+def tcb_list_chapters(start=0, end=9999):
+    """Scrape TCB Scans index page for chapter links."""
+    base = SOURCES["bw"]["base_url"]
+    html = fetch(f"{base}/mangas/5/one-piece", referer=base)
+
     pattern = (
         r'href="(/chapters/\d+/one-piece-chapter-(\d+)[^"]*)"[^>]*>\s*'
         r'<div[^>]*>One Piece\s+Chapter \d+</div>\s*'
@@ -98,27 +119,24 @@ def list_chapters(start=0, end=9999):
         chapters.append({
             "chapter": ch_num,
             "title": title.strip(),
-            "url": f"{BASE_URL}{path}",
+            "url": f"{base}{path}",
         })
 
     chapters.sort(key=lambda c: c["chapter"])
     return chapters
 
 
-def extract_images(chapter_url, expected_ch_num):
-    """Fetch a chapter page and extract manga image URLs."""
+def tcb_extract_images(chapter_url, expected_ch_num):
+    """Extract manga image URLs from a TCB Scans chapter page."""
+    base = SOURCES["bw"]["base_url"]
     for attempt in range(3):
-        html = fetch(chapter_url)
+        html = fetch(chapter_url, referer=base)
 
-        # Find all CDN image URLs with the fixed-ratio-content class
-        # Pattern: <img ... class="fixed-ratio-content" ... src="URL" ...>
-        # or src before class — just find all CDN image URLs in the page
         all_imgs = re.findall(
             r'src="(https://cdn\.onepiecechapters\.com/file/CDN-M-A-N/[^"]+)"',
             html,
         )
 
-        # Filter out ads (sticky, half-page, etc.)
         manga_imgs = [
             url for url in all_imgs
             if not any(ad in url.lower() for ad in ["sticky", "halfpage", "half-page", "banner", "half_page"])
@@ -130,7 +148,7 @@ def extract_images(chapter_url, expected_ch_num):
                 continue
             return manga_imgs
 
-        # Check for chapter mismatch in filenames
+        # Check for chapter mismatch in filenames (TCB caching bug)
         file_ch_nums = []
         for url in manga_imgs:
             fname = url.split("/")[-1].lower()
@@ -150,16 +168,71 @@ def extract_images(chapter_url, expected_ch_num):
         time.sleep(2)
 
     print(f"  WARNING: could not get correct images after 3 attempts", file=sys.stderr)
-    return manga_imgs  # return whatever we got last
+    return manga_imgs
 
 
-def download_image(url, filepath):
+# --- Colored (readonepiece.com) ---
+
+def colored_list_chapters(start=0, end=9999):
+    """Scrape readonepiece.com for colored chapter links."""
+    base = SOURCES["colored"]["base_url"]
+    max_ch = SOURCES["colored"]["max_chapter"]
+    end = min(end, max_ch)
+
+    html = fetch(f"{base}/manga/one-piece-digital-colored-comics/", referer=base)
+
+    links = re.findall(
+        r'href="(https?://[^"]*one-piece-digital-colored-comics-chapter-(\d+)/)"',
+        html,
+    )
+
+    chapters = []
+    seen = set()
+    for url, ch_num_str in links:
+        ch_num = int(ch_num_str)
+        if ch_num in seen or ch_num < start or ch_num > end:
+            continue
+        seen.add(ch_num)
+        chapters.append({
+            "chapter": ch_num,
+            "title": "",
+            "url": url,
+        })
+
+    chapters.sort(key=lambda c: c["chapter"])
+    return chapters
+
+
+def colored_extract_images(chapter_url, expected_ch_num):
+    """Extract manga image URLs from a readonepiece.com colored chapter page."""
+    base = SOURCES["colored"]["base_url"]
+    html = fetch(chapter_url, referer=base)
+
+    all_imgs = re.findall(
+        r'src="(https://cdn\.readonepiece\.com/file/[^"]+)"',
+        html,
+    )
+
+    # Deduplicate while preserving order
+    seen = set()
+    manga_imgs = []
+    for url in all_imgs:
+        if url not in seen:
+            seen.add(url)
+            manga_imgs.append(url)
+
+    return manga_imgs
+
+
+# --- Common ---
+
+def download_image(url, filepath, referer=None):
     """Download an image, skip if already exists."""
     if filepath.exists() and filepath.stat().st_size > 0:
         return True
     for attempt in range(3):
         try:
-            data = fetch_bytes(url)
+            data = fetch_bytes(url, referer=referer)
             with open(filepath, "wb") as f:
                 f.write(data)
             return True
@@ -184,7 +257,7 @@ def optimize_image(filepath, max_width):
     return img
 
 
-def verify_chapters(chapters, images_dir):
+def verify_chapters(chapters, images_dir, colored=False):
     """Verify all downloaded chapters for issues."""
     issues = []
     for ch in chapters:
@@ -196,13 +269,15 @@ def verify_chapters(chapters, images_dir):
             issues.append(f"Ch {ch_num}: NO PAGES")
             continue
 
-        for i, url in enumerate(ch["images"]):
-            fname = url.split("/")[-1].lower()
-            nums = re.findall(r"(\d{4})", fname)
-            for n in nums:
-                n_int = int(n)
-                if 900 <= n_int <= 1300 and n_int != ch_num:
-                    issues.append(f"Ch {ch_num}: page {i} filename has ch {n_int} MISMATCH")
+        # Filename mismatch check (TCB only — colored filenames are UUIDs)
+        if not colored:
+            for i, url in enumerate(ch["images"]):
+                fname = url.split("/")[-1].lower()
+                nums = re.findall(r"(\d{4})", fname)
+                for n in nums:
+                    n_int = int(n)
+                    if 900 <= n_int <= 1300 and n_int != ch_num:
+                        issues.append(f"Ch {ch_num}: page {i} filename has ch {n_int} MISMATCH")
 
         for p in pages:
             if p.stat().st_size < 10000:
@@ -219,11 +294,21 @@ def verify_chapters(chapters, images_dir):
     return issues
 
 
+def get_source_fns(colored=False):
+    """Return the appropriate list/extract functions for the source."""
+    if colored:
+        return colored_list_chapters, colored_extract_images, SOURCES["colored"]
+    return tcb_list_chapters, tcb_extract_images, SOURCES["bw"]
+
+
+# --- Commands ---
+
 def cmd_arcs(args):
     """List known arcs."""
     arcs = load_arcs()
-    print(f"{'Arc':<20} {'Chapters':<15} {'Status'}")
-    print(f"{'---':<20} {'--------':<15} {'------'}")
+    max_colored = SOURCES["colored"]["max_chapter"]
+    print(f"{'Arc':<20} {'Chapters':<15} {'Colored'}")
+    print(f"{'---':<20} {'--------':<15} {'-------'}")
     for arc in arcs:
         start = arc["chapters"][0]
         end = arc["chapters"][1]
@@ -231,15 +316,34 @@ def cmd_arcs(args):
             ch_range = f"{start}-{end}"
         else:
             ch_range = f"{start}-ongoing ({arc.get('latest_chapter', '?')})"
-        print(f"{arc['name']:<20} {ch_range:<15} {arc['status']}")
+
+        if end and end <= max_colored:
+            colored = "yes"
+        elif start <= max_colored:
+            colored = f"partial (to {max_colored})"
+        else:
+            colored = "no"
+
+        print(f"{arc['name']:<20} {ch_range:<15} {colored}")
 
 
 def cmd_list(args):
     """List available chapters."""
     if args.arc:
         arc, args.start, args.end = resolve_arc(args.arc)
-        print(f"Arc: {arc['name']}\n", file=sys.stderr)
-    chapters = list_chapters(args.start, args.end)
+        print(f"Arc: {arc['name']}", file=sys.stderr)
+
+    list_fn, _, source = get_source_fns(args.colored)
+
+    if args.colored:
+        max_ch = source["max_chapter"]
+        if args.start > max_ch:
+            print(f"Colored version only goes up to chapter {max_ch}", file=sys.stderr)
+            sys.exit(1)
+        args.end = min(args.end, max_ch)
+        print(f"Source: {source['name']} (up to ch {max_ch})\n", file=sys.stderr)
+
+    chapters = list_fn(args.start, args.end)
     if not chapters:
         print("No chapters found", file=sys.stderr)
         return
@@ -260,7 +364,19 @@ def cmd_download(args):
         arc, args.start, args.end = resolve_arc(args.arc)
         if not args.output:
             arc_slug = arc["name"].replace(" ", "_")
-            args.output = f"OnePiece_{arc_slug}"
+            suffix = "_Colored" if args.colored else ""
+            args.output = f"OnePiece_{arc_slug}{suffix}"
+
+    list_fn, extract_fn, source = get_source_fns(args.colored)
+
+    if args.colored:
+        max_ch = source["max_chapter"]
+        if args.start > max_ch:
+            print(f"Colored version only goes up to chapter {max_ch}", file=sys.stderr)
+            sys.exit(1)
+        if args.end > max_ch:
+            print(f"Note: colored version ends at ch {max_ch}, capping range", file=sys.stderr)
+            args.end = max_ch
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -268,8 +384,9 @@ def cmd_download(args):
     images_dir.mkdir(exist_ok=True)
 
     # Step 1: List chapters
+    print(f"Source: {source['name']}", file=sys.stderr)
     print("Fetching chapter list...", file=sys.stderr)
-    chapters = list_chapters(args.start, args.end)
+    chapters = list_fn(args.start, args.end)
     if not chapters:
         print("No chapters found", file=sys.stderr)
         sys.exit(1)
@@ -279,7 +396,7 @@ def cmd_download(args):
     print("\n=== EXTRACTING IMAGE URLS ===", file=sys.stderr)
     for ch in chapters:
         print(f"Ch {ch['chapter']}: {ch['title']}", file=sys.stderr)
-        ch["images"] = extract_images(ch["url"], ch["chapter"])
+        ch["images"] = extract_fn(ch["url"], ch["chapter"])
         print(f"  -> {len(ch['images'])} pages", file=sys.stderr)
         time.sleep(0.3)
 
@@ -292,6 +409,7 @@ def cmd_download(args):
     print(f"\nTotal: {total_images} pages to download", file=sys.stderr)
 
     # Step 3: Download images
+    referer = source["base_url"]
     print("\n=== DOWNLOADING ===", file=sys.stderr)
     downloaded = 0
     failed = 0
@@ -305,7 +423,7 @@ def cmd_download(args):
             if ext not in ("png", "jpg", "jpeg", "webp"):
                 ext = "png"
             filepath = ch_dir / f"page_{i:03d}.{ext}"
-            if download_image(img_url, filepath):
+            if download_image(img_url, filepath, referer=referer):
                 downloaded += 1
             else:
                 failed += 1
@@ -314,7 +432,7 @@ def cmd_download(args):
 
     # Step 4: Verify
     print("\n=== VERIFYING ===", file=sys.stderr)
-    issues = verify_chapters(chapters, images_dir)
+    issues = verify_chapters(chapters, images_dir, colored=args.colored)
     if issues:
         print(f"{len(issues)} issues found:", file=sys.stderr)
         for issue in issues:
@@ -380,13 +498,14 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     # arcs
-    sub.add_parser("arcs", help="List known arcs")
+    sub.add_parser("arcs", help="List known arcs with colored availability")
 
     # list
     p_list = sub.add_parser("list", help="List available chapters")
     p_list.add_argument("start", type=int, nargs="?", help="Start chapter number")
     p_list.add_argument("end", type=int, nargs="?", help="End chapter number")
     p_list.add_argument("--arc", "-a", help="Arc name (e.g. egghead, elbaf, wano)")
+    p_list.add_argument("--colored", "-c", action="store_true", help="Use colored source (ch 1-1065)")
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # download
@@ -394,6 +513,7 @@ def main():
     p_dl.add_argument("start", type=int, nargs="?", help="Start chapter number")
     p_dl.add_argument("end", type=int, nargs="?", help="End chapter number")
     p_dl.add_argument("--arc", "-a", help="Arc name (e.g. egghead, elbaf, wano)")
+    p_dl.add_argument("--colored", "-c", action="store_true", help="Use colored source (ch 1-1065)")
     p_dl.add_argument("--output", "-o", default=None, help="Output filename prefix")
     p_dl.add_argument("--output-dir", "-d", default=".", help="Output directory (default: current)")
     p_dl.add_argument("--quality", "-q", type=int, default=75, help="JPEG quality (default: 75)")
