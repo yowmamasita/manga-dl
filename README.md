@@ -1,48 +1,45 @@
 # manga-dl
 
-Download manga chapters from TCB Scans and compile into iPad-optimized CBZ/PDF.
+Download One Piece chapters from TCB Scans and compile into iPad-optimized CBZ/PDF.
 
-Requires Chrome running with remote debugging and `chrome-remote-interface` (npm).
+Pure Python — no browser, no Node.js, no Selenium/Playwright needed.
 
 ## Setup
 
 ```bash
-npm install chrome-remote-interface
 pip install Pillow
-```
-
-Chrome must be running with:
-```bash
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
 ```
 
 ## Usage
 
-### 1. List available chapters
+### List chapters
 
 ```bash
-node list_chapters.js 1058 1125 > chapters.json
+python manga_dl.py list 1058 1125
+python manga_dl.py list 1126 1178 --json
 ```
 
-### 2. Extract image URLs
+### Download and compile
 
 ```bash
-node extract.js chapters.json chapter_images.json
-```
+# Egghead arc
+python manga_dl.py download 1058 1125 -o "OnePiece_Egghead"
 
-The extractor auto-detects and retries when TCB's CDN serves cached images from the wrong chapter.
+# Elbaf arc
+python manga_dl.py download 1126 1178 -o "OnePiece_Elbaf"
 
-### 3. Download and compile
-
-```bash
-python build.py chapter_images.json --output-prefix "OnePiece_Egghead_Arc"
+# Custom settings
+python manga_dl.py download 1126 1178 -o "OnePiece_Elbaf" -q 80 --max-width 1600 -d ./output
 ```
 
 Options:
-- `--quality 75` — JPEG quality (default: 75)
-- `--max-width 1400` — max image width in px (default: 1400)
-- `--images-dir ./imgs` — custom download directory
+- `-o, --output` — output filename prefix
+- `-d, --output-dir` — output directory (default: current)
+- `-q, --quality` — JPEG quality 1-100 (default: 75)
+- `--max-width` — max image width in px (default: 1400)
 - `--skip-pdf` — only generate CBZ
+
+The tool auto-detects and retries when TCB's CDN serves cached images from the wrong chapter.
 
 ## Arc Reference
 
@@ -52,7 +49,7 @@ Options:
 | Egghead | 1058–1125 | Completed |
 | Elbaf | 1126–ongoing | Ongoing (latest: 1178) |
 
-## Output Formats
+## Output
 
 - **CBZ** — recommended for iPad. Use [Panels](https://apps.apple.com/app/panels-comic-reader/id1236567663) (free) or YACReader.
 - **PDF** — fallback for Apple Books.

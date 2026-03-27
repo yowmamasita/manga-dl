@@ -1,6 +1,6 @@
-node_modules/
 images/
-egghead_images/
 *.cbz
 *.pdf
 *.log
+chapter_data.json
+__pycache__/
