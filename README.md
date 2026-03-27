@@ -2,7 +2,7 @@
 
 Download One Piece chapters from TCB Scans and compile into iPad-optimized CBZ/PDF.
 
-Pure Python — no browser, no Node.js, no Selenium/Playwright needed.
+Pure Python — no browser needed.
 
 ## Setup
 
@@ -12,42 +12,47 @@ pip install Pillow
 
 ## Usage
 
+### List known arcs
+
+```bash
+python manga_dl.py arcs
+```
+```
+Arc                  Chapters        Status
+Wano Country         909-1057        completed
+Egghead              1058-1125       completed
+Elbaf                1126-ongoing    ongoing
+```
+
+### Download by arc
+
+```bash
+python manga_dl.py download --arc egghead
+python manga_dl.py download --arc elbaf
+python manga_dl.py download --arc wano
+```
+
+### Download by chapter range
+
+```bash
+python manga_dl.py download 1058 1125 -o "OnePiece_Egghead"
+```
+
 ### List chapters
 
 ```bash
+python manga_dl.py list --arc egghead
 python manga_dl.py list 1058 1125
-python manga_dl.py list 1126 1178 --json
 ```
 
-### Download and compile
+### Options
 
-```bash
-# Egghead arc
-python manga_dl.py download 1058 1125 -o "OnePiece_Egghead"
-
-# Elbaf arc
-python manga_dl.py download 1126 1178 -o "OnePiece_Elbaf"
-
-# Custom settings
-python manga_dl.py download 1126 1178 -o "OnePiece_Elbaf" -q 80 --max-width 1600 -d ./output
-```
-
-Options:
-- `-o, --output` — output filename prefix
+- `-a, --arc` — arc name (partial match, case-insensitive)
+- `-o, --output` — output filename prefix (auto-generated from arc name if omitted)
 - `-d, --output-dir` — output directory (default: current)
 - `-q, --quality` — JPEG quality 1-100 (default: 75)
 - `--max-width` — max image width in px (default: 1400)
 - `--skip-pdf` — only generate CBZ
-
-The tool auto-detects and retries when TCB's CDN serves cached images from the wrong chapter.
-
-## Arc Reference
-
-| Arc | Chapters | Status |
-|-----|----------|--------|
-| Wano Country | 909–1057 | Completed |
-| Egghead | 1058–1125 | Completed |
-| Elbaf | 1126–ongoing | Ongoing (latest: 1178) |
 
 ## Output
 

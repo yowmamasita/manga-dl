@@ -5,14 +5,19 @@ manga-dl: Download manga chapters from TCB Scans and compile into CBZ/PDF.
 No browser required — uses plain HTTP requests.
 
 Usage:
-    # List chapters for an arc
-    python manga_dl.py list 1058 1125
+    # List known arcs
+    python manga_dl.py arcs
 
-    # Download and compile
+    # Download by arc name
+    python manga_dl.py download --arc egghead
+    python manga_dl.py download --arc elbaf
+
+    # Download by chapter range
     python manga_dl.py download 1058 1125 --output "OnePiece_Egghead"
 
-    # Download with custom settings
-    python manga_dl.py download 1126 1178 --output "OnePiece_Elbaf" --quality 80 --max-width 1600
+    # List chapters
+    python manga_dl.py list 1058 1125
+    python manga_dl.py list --arc wano
 """
 
 import argparse
@@ -26,11 +31,32 @@ import zipfile
 from pathlib import Path
 from PIL import Image
 
+ARCS_FILE = Path(__file__).parent / "arcs.json"
 BASE_URL = "https://tcbonepiecechapters.com"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     "Referer": f"{BASE_URL}/",
 }
+
+
+def load_arcs():
+    """Load arc definitions from arcs.json."""
+    with open(ARCS_FILE) as f:
+        return json.load(f)["arcs"]
+
+
+def resolve_arc(name):
+    """Look up an arc by name (case-insensitive, partial match)."""
+    arcs = load_arcs()
+    name_lower = name.lower()
+    for arc in arcs:
+        if name_lower in arc["name"].lower():
+            start = arc["chapters"][0]
+            end = arc["chapters"][1] or arc.get("latest_chapter", 9999)
+            return arc, start, end
+    arc_names = ", ".join(a["name"] for a in arcs)
+    print(f"Unknown arc '{name}'. Available: {arc_names}", file=sys.stderr)
+    sys.exit(1)
 
 
 def fetch(url):
@@ -193,8 +219,26 @@ def verify_chapters(chapters, images_dir):
     return issues
 
 
+def cmd_arcs(args):
+    """List known arcs."""
+    arcs = load_arcs()
+    print(f"{'Arc':<20} {'Chapters':<15} {'Status'}")
+    print(f"{'---':<20} {'--------':<15} {'------'}")
+    for arc in arcs:
+        start = arc["chapters"][0]
+        end = arc["chapters"][1]
+        if end:
+            ch_range = f"{start}-{end}"
+        else:
+            ch_range = f"{start}-ongoing ({arc.get('latest_chapter', '?')})"
+        print(f"{arc['name']:<20} {ch_range:<15} {arc['status']}")
+
+
 def cmd_list(args):
     """List available chapters."""
+    if args.arc:
+        arc, args.start, args.end = resolve_arc(args.arc)
+        print(f"Arc: {arc['name']}\n", file=sys.stderr)
     chapters = list_chapters(args.start, args.end)
     if not chapters:
         print("No chapters found", file=sys.stderr)
@@ -212,6 +256,12 @@ def cmd_list(args):
 
 def cmd_download(args):
     """Download chapters and compile into CBZ/PDF."""
+    if args.arc:
+        arc, args.start, args.end = resolve_arc(args.arc)
+        if not args.output:
+            arc_slug = arc["name"].replace(" ", "_")
+            args.output = f"OnePiece_{arc_slug}"
+
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     images_dir = output_dir / "images"
@@ -329,16 +379,21 @@ def main():
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # arcs
+    sub.add_parser("arcs", help="List known arcs")
+
     # list
     p_list = sub.add_parser("list", help="List available chapters")
-    p_list.add_argument("start", type=int, help="Start chapter number")
-    p_list.add_argument("end", type=int, help="End chapter number")
+    p_list.add_argument("start", type=int, nargs="?", help="Start chapter number")
+    p_list.add_argument("end", type=int, nargs="?", help="End chapter number")
+    p_list.add_argument("--arc", "-a", help="Arc name (e.g. egghead, elbaf, wano)")
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # download
     p_dl = sub.add_parser("download", help="Download and compile chapters")
-    p_dl.add_argument("start", type=int, help="Start chapter number")
-    p_dl.add_argument("end", type=int, help="End chapter number")
+    p_dl.add_argument("start", type=int, nargs="?", help="Start chapter number")
+    p_dl.add_argument("end", type=int, nargs="?", help="End chapter number")
+    p_dl.add_argument("--arc", "-a", help="Arc name (e.g. egghead, elbaf, wano)")
     p_dl.add_argument("--output", "-o", default=None, help="Output filename prefix")
     p_dl.add_argument("--output-dir", "-d", default=".", help="Output directory (default: current)")
     p_dl.add_argument("--quality", "-q", type=int, default=75, help="JPEG quality (default: 75)")
@@ -347,9 +402,15 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "list":
+    if args.command == "arcs":
+        cmd_arcs(args)
+    elif args.command == "list":
+        if not args.arc and (args.start is None or args.end is None):
+            p_list.error("provide start/end chapter numbers or --arc")
         cmd_list(args)
     elif args.command == "download":
+        if not args.arc and (args.start is None or args.end is None):
+            p_dl.error("provide start/end chapter numbers or --arc")
         cmd_download(args)
 
 
