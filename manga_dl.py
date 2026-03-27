@@ -44,7 +44,7 @@ SOURCES = {
         "max_chapter": None,  # ongoing
     },
     "colored": {
-        "name": "Digital Colored Comics",
+        "name": "Digital Colored Comics (readonepiece.com)",
         "base_url": "https://ww12.readonepiece.com",
         "max_chapter": 1065,
     },
