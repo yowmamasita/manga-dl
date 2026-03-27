@@ -1,0 +1,22 @@
+{
+  "manga": "One Piece",
+  "source": "tcbonepiecechapters.com",
+  "arcs": [
+    {
+      "name": "Wano Country",
+      "chapters": [909, 1057],
+      "status": "completed"
+    },
+    {
+      "name": "Egghead",
+      "chapters": [1058, 1125],
+      "status": "completed"
+    },
+    {
+      "name": "Elbaf",
+      "chapters": [1126, null],
+      "status": "ongoing",
+      "latest_chapter": 1178
+    }
+  ]
+}
