@@ -1,4 +1,4 @@
-# manga-dl
+# onepiece-dl
 
 Download One Piece chapters from TCB Scans and compile into iPad-optimized CBZ/PDF.
 
@@ -17,7 +17,7 @@ pip install Pillow
 ### List known arcs
 
 ```bash
-python manga_dl.py arcs
+python onepiece_dl.py arcs
 ```
 ```
 Arc                  Chapters        Colored
@@ -34,26 +34,26 @@ Elbaf                1126-ongoing    no
 
 ```bash
 # B&W (default)
-python manga_dl.py download --arc egghead
-python manga_dl.py download --arc elbaf
+python onepiece_dl.py download --arc egghead
+python onepiece_dl.py download --arc elbaf
 
 # Colored
-python manga_dl.py download --arc marineford --colored
-python manga_dl.py download --arc "arlong park" --colored
+python onepiece_dl.py download --arc marineford --colored
+python onepiece_dl.py download --arc "arlong park" --colored
 ```
 
 ### Download by chapter range
 
 ```bash
-python manga_dl.py download 1 100 --colored
-python manga_dl.py download 1058 1125 -o "OnePiece_Egghead"
+python onepiece_dl.py download 1 100 --colored
+python onepiece_dl.py download 1058 1125 -o "OnePiece_Egghead"
 ```
 
 ### List chapters
 
 ```bash
-python manga_dl.py list --arc wano
-python manga_dl.py list 1 100 --colored
+python onepiece_dl.py list --arc wano
+python onepiece_dl.py list 1 100 --colored
 ```
 
 ### Options
